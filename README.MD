@@ -1,4 +1,4 @@
-# <sub><img src="soravault-logo-square.png" height="35"></sub>  SoraVault
+# <sub><img src="assets/soravault-logo-square.png" height="35"></sub>  SoraVault
 
 **Your Sora library is about to disappear. Vault it.**
 
@@ -35,10 +35,10 @@ in original quality - in minutes, not hours.
 
 ## 🎬 See it in action
 
-[![SoraVault Demo](thumbnail.png)](https://www.youtube.com/watch?v=vwLxNlZiFc8)
+[![SoraVault Demo](assets/videothumbnail.png)](https://www.youtube.com/watch?v=vwLxNlZiFc8)
 *1 minute. No fluff. Just the tool doing its thing.*
 
-🎵 *Soundtrack: NENI by Bastian RENN — [Spotify Link]*
+🎵 *Soundtrack: NENI by Bastian RENN — [Upcoming on Spotify]*
 
 ---
 
@@ -47,7 +47,7 @@ in original quality - in minutes, not hours.
 ### Option A: Tampermonkey Script (Free)
 
 1. Install [Tampermonkey](https://tampermonkey.net) for your browser
-2. Click [Install SoraVault Script](raw-link-to-script.user.js)
+2. Click [Install SoraVault Script](/tampermonkey/SoraVault_v1.0.user.js)
 3. Go to [sora.chatgpt.com](https://sora.chatgpt.com)
 4. Click the SoraVault panel → Scan → Filter → Download
 
