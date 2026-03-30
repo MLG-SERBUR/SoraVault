@@ -1,7 +1,7 @@
 # <sub><img src="assets/soravault-logo-square.png" height="35"></sub>  SoraVault
 
 **Your Sora library is about to disappear. Vault it.**
-
+ 
 Sora is shutting down. OpenAI hasn't released an export tool yet.
 SoraVault saves your entire library - videos, images, and prompts
 in original quality - in minutes, not hours.
