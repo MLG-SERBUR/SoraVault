@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SoraVault
 // @namespace    https://github.com/charyou/SoraVault
-// @version      1.0.0
+// @version      1.0.1
 // @description  Bulk backup Sora content — images, videos, drafts. Filter by keyword, ratio, date or count. Free your memories before Sora closes.
 // @author       Sebastian Haas (charyou)
 // @homepageURL  https://github.com/charyou/SoraVault
@@ -25,8 +25,8 @@
     // =====================================================================
     // CONFIG & RELEASE INFO
     // =====================================================================
-    const VERSION      = '1.0';
-    const RELEASE_DATE = '2026-30-30';   // hardcoded release date
+    const VERSION      = '1.0.1';
+    const RELEASE_DATE = '2026-03-30';   // hardcoded release date
     const GITHUB_REPO  = 'charyou/SoraVault';
     const SORA_SHUTDOWN = new Date('2026-04-26T00:00:00Z');
 
@@ -84,6 +84,7 @@
     let skipWaitRequested = false;
     let lastSaveTxt       = false;
     let lastFilterSnap    = [];   // snapshot of active filters at download time
+    let dlMethod          = 'fs'; // 'fs' = File System Access (Chrome/Edge), 'gm' = GM_download fallback
 
     const filters = {
         keyword: '', ratios: new Set(), dateFrom: '', dateTo: '',
@@ -539,6 +540,38 @@
         } catch(e) { return false; }
     }
 
+    // — GM_download fallback (all browsers via Tampermonkey, saveAs:false = no per-file prompt) —
+
+    function downloadFileGM(url, subfolder, filename) {
+        return new Promise(resolve => {
+            const name = subfolder ? `${subfolder}/${filename}` : filename;
+            GM_download({
+                url,
+                name,
+                saveAs: false,
+                onload:    ()  => resolve(true),
+                onerror:   (e) => { log(`GM err: ${e?.error || 'unknown'}`); resolve(false); },
+                ontimeout: ()  => { log('GM timeout'); resolve(false); },
+            });
+        });
+    }
+
+    function downloadTextFileGM(content, subfolder, filename) {
+        return new Promise(resolve => {
+            const name = subfolder ? `${subfolder}/${filename}` : filename;
+            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+            const dataUrl = URL.createObjectURL(blob);
+            GM_download({
+                url: dataUrl,
+                name,
+                saveAs: false,
+                onload:    ()  => { URL.revokeObjectURL(dataUrl); resolve(true); },
+                onerror:   ()  => { URL.revokeObjectURL(dataUrl); resolve(false); },
+                ontimeout: ()  => { URL.revokeObjectURL(dataUrl); resolve(false); },
+            });
+        });
+    }
+
     // =====================================================================
     // SCAN STORYTELLING
     // =====================================================================
@@ -678,9 +711,30 @@
         const items = getFilteredItems();
         if (items.length === 0) return;
 
-        let baseDir;
-        try { baseDir = await window.showDirectoryPicker({ mode: 'readwrite' }); }
-        catch(e) { log('Folder selection cancelled.'); return; }
+        // ── Pick download method: File System Access (Chrome/Edge) or GM_download fallback ──
+        const hasFS = typeof window.showDirectoryPicker === 'function';
+        const hasGM = typeof GM_download === 'function';
+
+        let baseDir = null;
+
+        if (hasFS) {
+            try {
+                baseDir = await window.showDirectoryPicker({ mode: 'readwrite' });
+                dlMethod = 'fs';
+            } catch(e) {
+                log('Folder selection cancelled.');
+                return;
+            }
+        } else if (hasGM) {
+            dlMethod = 'gm';
+            log('ℹ Folder picker not available — using Tampermonkey downloads');
+            log('  Files go to your default Downloads folder in subfolders.');
+        } else {
+            log('⚠ No download method available.');
+            log('  Use Chrome/Edge for full support, or check Tampermonkey settings.');
+            setStatus('Chrome/Edge required for folder picker — see log');
+            return;
+        }
 
         isRunning = true; stopRequested = false;
         completedCount = 0; failedCount = 0;
@@ -697,7 +751,7 @@
         setState('downloading');
         updateDownloadProgress();
 
-        // Create per-category subdirectories lazily
+        // ── FS mode: subfolder handles ────────────────────────────
         const subDirCache = {};
         async function getSubDir(item) {
             const name = getSubfolderName(item);
@@ -715,7 +769,6 @@
             while (idx < items.length && !stopRequested) {
                 const i = idx++, item = items[i];
                 const url = await getDownloadUrl(item);
-                const targetDir = await getSubDir(item);
                 if (!url) {
                     failedCount++;
                     log(`No URL: ${item.genId || item.postId}`);
@@ -725,20 +778,37 @@
                 const base = buildBase(item);
                 const ext  = item.mode === 'v2' ? '.mp4' : '.png';
                 log(`[${i+1}/${totalToDownload}] ${base.slice(0, 55)}…`);
-                const ok = await downloadFileFS(url, base + ext, targetDir);
+
+                let ok;
+                if (dlMethod === 'fs') {
+                    const targetDir = await getSubDir(item);
+                    ok = await downloadFileFS(url, base + ext, targetDir);
+                    if (ok && saveTxt) {
+                        await sleep(60);
+                        await downloadTextFileFS(buildTxtContent(item), base + '.txt', targetDir);
+                    }
+                } else {
+                    const sub = getSubfolderName(item);
+                    ok = await downloadFileGM(url, sub, base + ext);
+                    if (ok && saveTxt) {
+                        await sleep(60);
+                        await downloadTextFileGM(buildTxtContent(item), sub, base + '.txt');
+                    }
+                }
+
                 if (ok) completedCount++;
                 else { failedCount++; log(`Failed: ${item.genId || item.postId}`); }
-                if (saveTxt) {
-                    await sleep(60);
-                    await downloadTextFileFS(buildTxtContent(item), base + '.txt', targetDir);
-                }
                 updateDownloadProgress(dlStart);
                 await sleep(SPEED_PRESETS[speedIdx].delay);
             }
         }
 
         while (idx < items.length && !stopRequested) {
-            const conc = Math.min(items.length - idx, SPEED_PRESETS[speedIdx].workers);
+            // Cap GM_download at 2 parallel workers — Tampermonkey queues through browser download manager
+            const maxWorkers = dlMethod === 'gm'
+                ? Math.min(2, SPEED_PRESETS[speedIdx].workers)
+                : SPEED_PRESETS[speedIdx].workers;
+            const conc = Math.min(items.length - idx, maxWorkers);
             await Promise.all(Array.from({ length: conc }, () => worker()));
         }
 
@@ -840,7 +910,9 @@
             init:        'Navigate to /library (images) or /profile, /drafts (videos)',
             scanning:    'Scanning — stop anytime to download what\'s found so far',
             ready:       '',
-            downloading: 'Saving files to your folder…',
+            downloading: dlMethod === 'gm'
+                ? 'Saving via Tampermonkey → default Downloads folder'
+                : 'Saving files to your folder…',
             done:        '',
         }[s] || '');
         syncExpertSections();
@@ -1400,6 +1472,9 @@
   <!-- ─── STATE: init ─────────────────────────────────────── -->
   <div id="sdl-s-init">
     <button class="sdl-btn sdl-btn-primary" id="sdl-scan">Scan Library</button>
+    <div id="sdl-browser-note" style="font-size:10px;color:rgba(255,255,255,0.2);text-align:center;margin-top:8px;line-height:1.5;">
+      Full support on Chrome &amp; Edge · other browsers use Tampermonkey fallback
+    </div>
   </div>
 
   <!-- ─── STATE: scanning ─────────────────────────────────── -->
@@ -1599,6 +1674,10 @@
       📷 Images → <code style="color:rgba(255,255,255,0.4)">soravault_images_library</code><br>
       🎬 Profile → <code style="color:rgba(255,255,255,0.4)">soravault_videos_profile</code><br>
       📋 Drafts → <code style="color:rgba(255,255,255,0.4)">soravault_videos_draft</code>
+    </div>
+    <div style="font-size:9.5px;color:rgba(255,255,255,0.16);line-height:1.6;padding:0 0 4px">
+      <strong style="color:rgba(255,255,255,0.25)">Chrome/Edge:</strong> folder picker — choose where files go<br>
+      <strong style="color:rgba(255,255,255,0.25)">Firefox/other:</strong> Tampermonkey fallback — Downloads folder
     </div>
   </div>
 
