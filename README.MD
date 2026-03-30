@@ -35,7 +35,7 @@ in original quality - in minutes, not hours.
 
 ## 🎬 See it in action
 
-[![SoraVault Demo](assets/videothumbnail.png)](https://www.youtube.com/watch?v=vwLxNlZiFc8)
+[![SoraVault Demo](assets/videothumbnail.png)](https://youtu.be/0eFteRew5mI)
 *1 minute. No fluff. Just the tool doing its thing.*
 
 🎵 *Soundtrack: NENI by Bastian RENN — [Upcoming on Spotify]*
