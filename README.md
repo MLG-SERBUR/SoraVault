@@ -177,4 +177,4 @@ This software is provided as-is, without warranty of any kind.
 ---
 
 *Built with urgency and care by Sebastian —
-[LinkedIn](https://www.linkedin.com/in/-sebastian-haas/) · [X](https://x.com/charjou) · [Instagram](https://www.instagram.com/charju_/)*
+ [X](https://x.com/charjou) 
