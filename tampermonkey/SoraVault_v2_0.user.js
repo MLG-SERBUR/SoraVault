@@ -60,8 +60,8 @@
     };
 
     const SPEED_PRESETS = [
-        { workers: 1, delay: 300 },
-        { workers: 1, delay: 150 },
+        { workers: 3, delay: 300 },
+        { workers: 2, delay: 150 },
         { workers: 1, delay:  60 },
     ];
 
@@ -1420,6 +1420,10 @@
         usedMediaUrls.clear();
         refreshRetryUI();
 
+        // Concurrency: force a single worker when doing a "refresh URLs" retry
+        const presetWorkers = SPEED_PRESETS[speedIdx].workers;
+        const effectiveWorkers = refreshUrls ? 1 : presetWorkers;
+
         const word = getContentWord();
         let logParts = [`Downloading ${totalToDownload} ${word}`];
         if (saveTxt)   logParts.push('+TXT');
@@ -1551,8 +1555,8 @@
 
         while (idx < items.length && !stopRequested) {
             const maxWorkers = dlMethod === 'gm'
-                ? Math.min(2, SPEED_PRESETS[speedIdx].workers)
-                : SPEED_PRESETS[speedIdx].workers;
+                ? Math.min(2, effectiveWorkers)
+                : effectiveWorkers;
             const conc = Math.min(items.length - idx, maxWorkers);
             await Promise.all(Array.from({ length: conc }, () => worker()));
         }
@@ -1665,12 +1669,14 @@
         const show = uiState === 'ready' && pendingRetryItems.length > 0;
         if (wrap) wrap.style.display = show ? '' : 'none';
         if (note) {
-            if (show && lastLowResInfo) {
-                note.textContent = `Halted on ${lastLowResInfo.actualWidth}x${lastLowResInfo.actualHeight} video. ${pendingRetryItems.length} item(s) remain.`;
-            } else if (show && lastHaltReason) {
-                note.textContent = `${lastHaltReason}. ${pendingRetryItems.length} item(s) remain.`;
+            if (!show) {
+                note.innerHTML = '';
             } else {
-                note.textContent = '';
+                const baseMsg = show && lastLowResInfo
+                    ? `Halted on ${lastLowResInfo.actualWidth}x${lastLowResInfo.actualHeight} video. ${pendingRetryItems.length} item(s) remain.`
+                    : (show && lastHaltReason ? `${lastHaltReason}. ${pendingRetryItems.length} item(s) remain.` : '');
+                const instruct = `<div style="font-size:11px;color:rgba(255,255,255,0.32);margin-top:6px;line-height:1.25">Tip: For drafts open the video in the Sora detail view (click to open and close) before using “Refresh URLs + retry”. For profile/likes open the post first. The refresh retry runs with 1 worker to improve chances of capturing a fresh direct URL.</div>`;
+                note.innerHTML = baseMsg + instruct;
             }
         }
         if (btn1) btn1.disabled = !show || isRunning;
@@ -1829,7 +1835,7 @@
         speedIdx = i;
         document.querySelectorAll('.sdl-speed-seg').forEach(el =>
             el.classList.toggle('active', parseInt(el.dataset.spd) === i));
-        const hints   = ['1 worker · 300 ms delay · safest', '1 worker · 150 ms delay · safer', '1 worker · 60 ms delay · most aggressive'];
+        const hints   = ['3 workers · 300 ms delay · safest', '2 workers · 150 ms delay · safer', '1 worker · 60 ms delay · most aggressive'];
         const classes = ['', 'warn', 'danger'];
         document.querySelectorAll('.sdl-speed-hint').forEach(h => {
             h.textContent = hints[i]; h.className = 'sdl-speed-hint ' + classes[i];
@@ -2576,7 +2582,7 @@
           <span class="s-icon">&#x25c9;</span><span class="s-lbl">Very fast</span><span class="s-risk">Ban risk!</span>
         </div>
       </div>
-      <div class="sdl-speed-hint">1 worker · 300 ms delay · safest</div>
+    <div class="sdl-speed-hint">3 workers · 300 ms delay · safest</div>
     </div>
     <button class="sdl-btn sdl-btn-stop" id="sdl-stop-dl">Stop</button>
   </div>
